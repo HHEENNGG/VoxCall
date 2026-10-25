@@ -1,0 +1,70 @@
+name: 问题反馈
+description: 报告一个 bug 或异常行为（启动失败、没声音、断续、延迟异常等）
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请先确认已安装 VB-CABLE，并附上环境自检结果：
+
+        - 便携版：在程序目录打开终端运行 `VoxCall.exe --doctor`（或直接看「关于」）
+        - 源码版：`python main.py --doctor`
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 发生了什么？你期望的结果是什么？
+      placeholder: 例如：点「开始」后状态一直停在「等待目标语音」，通话软件里没有声音。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 启动 VoxCall
+        2. 驱动接口选「自动（WASAPI 优先）」
+        3. 输入选 xxx，输出选 CABLE Input
+        4. 点「开始」
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 「关于」对话框或 --version 显示的版本号
+      placeholder: Beta 0.01
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: 环境自检输出
+      description: 运行 --doctor 的完整输出（会列出依赖、设备、模型、声纹目录）
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志（可选）
+      description: logs\error.log 的最后几十行
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows 版本
+      options:
+        - Windows 11
+        - Windows 10
+        - 其他（请在现象里补充）
+    validations:
+      required: true
