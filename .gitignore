@@ -1,5 +1,25 @@
-# Object file
-*.o
+# 运行时与构建产物（不要提交）
+runtime/
+models/
+.venv/
+venv/
+_dist/
+_build/
+_buildtmp/
+_internal/
+VoxCall.exe
+*.spec
 
-# Ada Library Information
-*.ali
+# 用户数据
+voiceprints/
+installers/
+logs/
+*.log
+sim_out.wav
+.voxcall-test/
+
+# Python
+__pycache__/
+*.py[cod]
+*.tmp
+.config-*.tmp

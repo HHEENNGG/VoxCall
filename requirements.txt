@@ -1,0 +1,13 @@
+# 需要 64 位 Python 3.11 / 3.12 / 3.13。
+# 注意：onnxruntime（VoxLock 的依赖）目前没有 Python 3.14/3.15 的 wheel，
+# 用更新的 Python 会导致模型不可用（程序仍能以待直通模式运行）。
+numpy>=1.24
+sounddevice>=0.4.6
+PySide6>=6.6
+
+# 可选但推荐：质量更好的流式重采样（缺失时自动使用内置 FIR 实现）
+soxr>=0.3.7
+
+# 模型与推理；不装也能启动，只是没有说话人隔离
+voxlock>=1.1,<2
+onnxruntime>=1.17

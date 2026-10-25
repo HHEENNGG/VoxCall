@@ -1,0 +1,57 @@
+# VoxCall 配置（TOML）。修改后重启程序生效；
+# 界面里选择的设备会在「开始」时自动写回本文件。
+
+[audio]
+# 输入设备名称片段（留空 = 用系统默认麦克风）
+input_device = ""
+# 输出设备名称片段。给通话软件供音时必须是 CABLE Input
+output_device = "CABLE Input"
+# 声卡采样率；打开失败会自动尝试设备默认值 44100/48000
+device_sample_rate = 48000
+# VoxLock 固定 16 kHz，不要改
+model_sample_rate = 16000
+# 每次处理的音频块长（毫秒）：60 = 均衡；40 延迟更低但更吃 CPU（看界面「欠载」是否增长）
+chunk_ms = 60
+# 采集流的小块长（毫秒）。驱动（WASAPI）缓冲会随它增长，保持 10 不要跟着 chunk_ms 放大
+capture_block_ms = 10
+# 播放块长（毫秒）：越小，新生成的声音越早被送出，延迟越低（回调更频繁）
+playback_block_ms = 10
+# 驱动接口：auto = WASAPI 优先（推荐，设备列表最干净）；all = 显示所有驱动；
+# 也可以填具体接口名，如 "Windows WASAPI" / "MME" / "Windows DirectSound"
+hostapi = "auto"
+# 播放缓冲目标（毫秒），越小延迟越低、越容易欠载
+target_latency_ms = 100
+# 采集队列最多缓存多少块（超过则丢最旧）
+max_input_blocks = 10
+# 播放缓冲上限（毫秒），超过则丢最旧数据，防止延迟越积越大
+max_output_ms = 600
+
+[model]
+# auto = 自动识别目标说话人；calibrated = 每次开始录 3 秒；
+# fixed = 固定声纹（用已保存的样本，启动即锁定）；off = 不加载模型（直通）
+mode = "auto"
+# int8-full（默认，本机实测最快）| int8 | fp16 | fp32
+# 注意：GPU（onnxruntime-directml）实测比 CPU 慢约 7 倍，不要为此换后端
+precision = "int8-full"
+# CPU 推理线程数；0 = 交给 onnxruntime 决定
+threads = 4
+# 校准模式录音时长（秒，至少 3）
+calibrate_seconds = 3
+# 本地 onnx 目录（留空则首次运行自动下载到 Hugging Face 缓存）
+model_dir = ""
+# 固定声纹文件（留空 = voiceprints/default.npy；界面「录制/更新声纹」会自动写入）
+voiceprint = ""
+# voxlock 不可用时是否允许降级为直通模式
+allow_passthrough = true
+
+[denoise]
+# 轻度频谱门：只压稳态底噪（风扇/空调/电流声）
+enabled = false
+strength = 0.35
+# 残留噪声下限（0~1），太小会产生"水声"
+floor_gain = 0.2
+
+[app]
+log_level = "INFO"
+# 日志文件（相对路径基于程序目录；留空只输出到控制台）
+log_file = ""
