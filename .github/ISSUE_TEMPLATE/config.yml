@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: VB-CABLE 安装或驱动问题
+    url: https://vb-audio.com/Cable/
+    about: 虚拟声卡本身的安装失败、设备不出现等问题，请先参考 VB-Audio 官方说明
+  - name: 使用说明
+    url: https://github.com/HHEENNGG/VoxCall#%E5%BC%80%E5%A7%8B%E4%BD%BF%E7%94%A8
+    about: 安装、设备选择、三种锁定方式、延迟档位
