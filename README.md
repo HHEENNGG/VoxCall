@@ -1,5 +1,10 @@
 # VoxCall · Beta 0.01
 
+[![tests](https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml/badge.svg)](https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml)
+[![release](https://img.shields.io/github/v/release/HHEENNGG/VoxCall?include_prereleases&label=release)](https://github.com/HHEENNGG/VoxCall/releases)
+[![license](https://img.shields.io/github/license/HHEENNGG/VoxCall)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue)](https://github.com/HHEENNGG/VoxCall)
+
 ![界面](docs/screenshot.png)
 
 VoxCall 是一款 Windows 实时通话降噪工具：用 **VoxLock** 做目标说话人隔离，只保留你的声音，
