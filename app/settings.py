@@ -54,6 +54,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "log_file": "",
         "check_updates": True,
         "update_check_hours": 12,
+        "close_to_tray": True,
+        "start_minimized": False,
     },
 }
 

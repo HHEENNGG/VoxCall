@@ -12,16 +12,19 @@ import time
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -73,6 +76,8 @@ class MainWindow(QMainWindow):
                     break
         except Exception:
             pass
+
+        self._init_tray()
 
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -365,11 +370,125 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ 菜单
     def _build_menu(self) -> None:
-        help_menu = self.menuBar().addMenu("帮助")
-        self.update_action = help_menu.addAction("检查更新…")
+        bar = self.menuBar()
+
+        file_menu = bar.addMenu("文件")
+        settings_action = file_menu.addAction("设置…")
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self.open_settings)
+        file_menu.addSeparator()
+        quit_action = file_menu.addAction("退出")
+        quit_action.setShortcut("Ctrl+Q")
+        quit_action.triggered.connect(self.quit_app)
+
+        tools_menu = bar.addMenu("工具")
+        self.update_action = tools_menu.addAction("检查更新…")
         self.update_action.triggered.connect(lambda: self.check_updates(manual=True))
-        about_action = help_menu.addAction("关于 VoxCall")
-        about_action.triggered.connect(self.show_about)
+        self.vbcable_action = tools_menu.addAction("安装 VB-CABLE…")
+        self.vbcable_action.triggered.connect(self.install_vbcable)
+        tools_menu.addSeparator()
+        tools_menu.addAction("打开配置文件夹", self.open_config_folder)
+        tools_menu.addAction("打开日志文件夹", self.open_log_folder)
+
+        help_menu = bar.addMenu("帮助")
+        help_menu.addAction("关于 VoxCall", self.show_about)
+
+    # ------------------------------------------------------------ 设置
+    def open_settings(self) -> None:
+        from .settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(self.config, self)
+        if dialog.exec() != dialog.Accepted:
+            return
+        try:
+            restart_needed = dialog.apply()
+        except Exception as exc:
+            QMessageBox.warning(self, "保存设置失败", str(exc))
+            return
+        # 立即生效的部分
+        self._update_tray_actions()
+        if not self.config.get("app", {}).get("check_updates", True):
+            self.status_label.setText("状态：已关闭自动更新检查")
+        elif restart_needed:
+            self.status_label.setText("状态：设置已保存（模型/音频改动在下次开始时生效）")
+        else:
+            self.status_label.setText("状态：设置已保存")
+
+    # ------------------------------------------------------------ 文件夹
+    def open_config_folder(self) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        folder = settings.CONFIG_PATH.parent
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def open_log_folder(self) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        from .paths import ROOT
+
+        folder = ROOT / "logs"
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    # ------------------------------------------------------------ 托盘
+    def _init_tray(self) -> None:
+        self._tray = None
+        self._tray_hint_shown = False
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        tray = QSystemTrayIcon(self.windowIcon(), self)
+        tray.setToolTip(f"VoxCall {self.windowTitle().split('·')[0].strip()}")
+
+        menu = QMenu(self)
+        self._tray_show_action = menu.addAction("显示主窗口", self.show_window)
+        menu.addSeparator()
+        self._tray_toggle_action = menu.addAction("开始降噪", self.toggle_engine)
+        menu.addSeparator()
+        menu.addAction("检查更新…", lambda: self.check_updates(manual=True))
+        menu.addAction("设置…", self.open_settings)
+        menu.addSeparator()
+        menu.addAction("退出 VoxCall", self.quit_app)
+        tray.setContextMenu(menu)
+        tray.activated.connect(self._on_tray_activated)
+        tray.messageClicked.connect(self.show_window)
+        tray.show()
+        self._tray = tray
+
+    def _on_tray_activated(self, reason) -> None:
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            self.show_window()
+
+    def _update_tray_actions(self) -> None:
+        if getattr(self, "_tray", None) is None:
+            return
+        running = self.engine.running
+        self._tray_toggle_action.setText("停止降噪" if running else "开始降噪")
+        self._tray.setToolTip(
+            "VoxCall Beta 0.01 · " + ("运行中" if running else "就绪")
+        )
+
+    def show_window(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def toggle_engine(self) -> None:
+        if self.engine.running:
+            self.stop_engine()
+        else:
+            self.start_engine()
+
+    def quit_app(self) -> None:
+        try:
+            if self.engine.running:
+                self.engine.stop(timeout=3.0)
+        finally:
+            self.timer.stop()
+            if getattr(self, "_tray", None) is not None:
+                self._tray.hide()
+            QApplication.quit()
 
     # ------------------------------------------------------------ 检查更新
     def check_updates(self, manual: bool = False) -> None:
@@ -765,11 +884,33 @@ class MainWindow(QMainWindow):
         if state in {"idle", "error"} and self._last_state not in {"idle", "error"}:
             self._set_controls_running(False)
         self._last_state = state
+        self._update_tray_actions()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt 命名
+        # 有托盘且开启「关闭到托盘」：只隐藏窗口，引擎继续在后台跑
+        if (
+            getattr(self, "_tray", None) is not None
+            and bool(self.config.get("app", {}).get("close_to_tray", True))
+        ):
+            event.ignore()
+            self.hide()
+            if not self._tray_hint_shown:
+                self._tray_hint_shown = True
+                try:
+                    self._tray.showMessage(
+                        "VoxCall 仍在后台运行",
+                        "窗口已收起到托盘。右键托盘图标可以「显示主窗口」或「退出」。",
+                        QSystemTrayIcon.Information,
+                        4000,
+                    )
+                except Exception:
+                    pass
+            return
         try:
             if self.engine.running:
                 self.engine.stop(timeout=3.0)
         finally:
             self.timer.stop()
+            if getattr(self, "_tray", None) is not None:
+                self._tray.hide()
             event.accept()

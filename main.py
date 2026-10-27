@@ -253,6 +253,17 @@ def run_gui(config: dict) -> int:
 
     window = MainWindow(config)
     window.show()
+
+    # 启动即最小化到托盘（设置里可开）
+    if bool(config.get("app", {}).get("start_minimized", False)) and window._tray is not None:
+        window.hide()
+        window._tray.showMessage(
+            "VoxCall 已在后台运行",
+            "右键托盘图标可以显示主窗口或退出。",
+            window._tray.Information,
+            3000,
+        )
+
     return int(app.exec())
 
 
