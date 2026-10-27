@@ -251,7 +251,15 @@ def run_gui(config: dict) -> int:
     except Exception:
         pass
 
+    # 单实例：已经在跑就唤起旧窗口，绝不开第二个
+    from app.single_instance import SingleInstance
+
+    guard = SingleInstance()
+    if guard.already_running():
+        return 0
+
     window = MainWindow(config)
+    guard.listen(window.show_window)
     window.show()
 
     # 启动即最小化到托盘（设置里可开）

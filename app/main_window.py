@@ -497,21 +497,20 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------ 文件夹
     def open_config_folder(self) -> None:
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
+        from . import shell
 
-        folder = settings.CONFIG_PATH.parent
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        folder = settings.active_config_path().parent
+        if not shell.open_path(folder):
+            self.status_label.setText(f"状态：无法打开文件夹 {folder}")
 
     def open_log_folder(self) -> None:
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
-
+        from . import shell
         from .paths import ROOT
 
         folder = ROOT / "logs"
         folder.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        if not shell.open_path(folder):
+            self.status_label.setText(f"状态：无法打开文件夹 {folder}")
 
     # ------------------------------------------------------------ 托盘
     def _init_tray(self) -> None:

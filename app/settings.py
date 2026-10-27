@@ -213,6 +213,14 @@ def fallback_config_path() -> Path:
     return state_dir() / "config.toml"
 
 
+def active_config_path() -> Path:
+    """当前真正生效的配置文件：用户目录有就用它，否则用程序目录。"""
+    fallback = fallback_config_path()
+    if fallback.exists():
+        return fallback
+    return CONFIG_PATH
+
+
 def load_config(path: str | os.PathLike | None = None) -> dict:
     """加载配置；显式路径优先，否则 用户目录 -> 程序目录 -> 旧版 yaml -> 默认值。
 

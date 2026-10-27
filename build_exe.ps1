@@ -52,17 +52,16 @@ Write-Host "开始打包（约 1–2 分钟）…" -ForegroundColor Cyan
     --add-data "$(Join-Path $PSScriptRoot 'assets\vbcable\VBCABLE_Driver_Pack45.zip');assets\vbcable" `
     --collect-data sounddevice `
     --exclude-module tkinter --exclude-module unittest --exclude-module pydoc `
-    --exclude-module lib2to3 --exclude-module hf_xet --exclude-module PySide6.QtNetwork `
+    --exclude-module lib2to3 --exclude-module hf_xet `
     --exclude-module PIL --exclude-module soundfile `
     (Join-Path $PSScriptRoot "main.py")
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 失败" }
 
 # 去掉用不到的组件（只裁尺寸，不影响 QWidget 界面与音频管线）
+# 注意：QtNetwork 不能删——单实例用 QLocalServer/QLocalSocket
 $internal = Join-Path $dist "VoxCall\_internal"
 foreach ($junk in @(
         "PySide6\opengl32sw.dll",          # 软件 OpenGL 回退，QWidget 用不到（19.7 MB）
-        "PySide6\Qt6Network.dll",          # 不联网
-        "PySide6\QtNetwork.pyd",
         "PySide6\plugins\sqldrivers",      # 不用数据库
         "hf_xet",                          # HuggingFace 传输加速，模型已内置
         "PIL",                             # 只在转图标时用到，运行时不需要
