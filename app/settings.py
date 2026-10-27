@@ -214,7 +214,11 @@ def fallback_config_path() -> Path:
 
 
 def load_config(path: str | os.PathLike | None = None) -> dict:
-    """加载配置；显式路径优先，否则 程序目录 -> 用户目录 -> 旧版 yaml -> 默认值。"""
+    """加载配置；显式路径优先，否则 用户目录 -> 程序目录 -> 旧版 yaml -> 默认值。
+
+    用户目录优先很重要：程序目录装到 Program Files 之类只读位置时，保存会落到
+    用户目录；如果这里仍优先读程序目录，界面上的改动就永远"存不住"。
+    """
     if path is not None:
         p = Path(path)
         if not p.exists():
@@ -224,7 +228,7 @@ def load_config(path: str | os.PathLike | None = None) -> dict:
             raw = _migrate_legacy(raw)
         return normalize(raw)
 
-    for candidate in (CONFIG_PATH, fallback_config_path(), LEGACY_CONFIG_PATH):
+    for candidate in (fallback_config_path(), CONFIG_PATH, LEGACY_CONFIG_PATH):
         if not candidate.exists():
             continue
         try:

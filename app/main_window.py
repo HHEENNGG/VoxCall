@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 
@@ -55,6 +56,12 @@ class MainWindow(QMainWindow):
         self.resize(760, 580)
         self.config = config if config is not None else settings.load_config()
         self.engine = AudioEngine(self.config)
+        self._loading = True  # 初始化期间不触发保存
+        self._save_error_shown = False
+        self._perf = None
+        self._perf_stats = {"cpu_percent": 0.0, "mem_mb": 0.0}
+        self._perf_at = 0.0
+        self._bar_band = ""
         self._last_state = "idle"
         self._record_job: dict | None = None
         self._install_job: dict | None = None
@@ -169,16 +176,40 @@ class MainWindow(QMainWindow):
         # ---- 电平 ----
         level_box = QGroupBox("电平")
         level_layout = QVBoxLayout(level_box)
-        self.in_bar = QProgressBar()
-        self.out_bar = QProgressBar()
-        for bar in (self.in_bar, self.out_bar):
+        level_layout.setSpacing(6)
+
+        def make_level_row(title: str, alert_text: str):
+            head = QHBoxLayout()
+            name = QLabel(title)
+            name.setStyleSheet("font-weight:600;")
+            peak = QLabel("—")
+            peak.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            peak.setMinimumWidth(150)
+            peak.setStyleSheet("color:#666; font-family:Consolas,monospace;")
+            head.addWidget(name)
+            head.addStretch(1)
+            head.addWidget(peak)
+            bar = QProgressBar()
             bar.setRange(0, 100)
             bar.setValue(0)
             bar.setTextVisible(False)
-        level_layout.addWidget(QLabel("输入（麦克风）"))
-        level_layout.addWidget(self.in_bar)
-        level_layout.addWidget(QLabel("输出（送往通话软件）"))
-        level_layout.addWidget(self.out_bar)
+            bar.setFixedHeight(22)
+            bar.setMinimumWidth(300)
+            bar.setStyleSheet(
+                "QProgressBar { border:1px solid #cfd6e0; border-radius:6px; "
+                "background:#f2f4f8; }"
+                "QProgressBar::chunk { border-radius:5px; background:#38c172; }"
+            )
+            level_layout.addLayout(head)
+            level_layout.addWidget(bar)
+            return bar, peak, alert_text
+
+        self.in_bar, self.in_peak_label, self._in_alert = make_level_row(
+            "输入（麦克风）", "过载"
+        )
+        self.out_bar, self.out_peak_label, self._out_alert = make_level_row(
+            "输出（送往通话软件）", "过载"
+        )
         layout.addWidget(level_box)
 
         self.status_label = QLabel("状态：就绪")
@@ -204,19 +235,69 @@ class MainWindow(QMainWindow):
         self.hostapi_combo.currentIndexChanged.connect(self._on_hostapi_changed)
         self.profile_combo.setCurrentIndex(self._detect_profile())
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
+        self.input_combo.currentIndexChanged.connect(self._on_device_changed)
+        self.output_combo.currentIndexChanged.connect(self._on_device_changed)
+        for radio in (self.auto_radio, self.calib_radio, self.fixed_radio):
+            radio.toggled.connect(self._on_mode_toggled)
         self.start_btn.clicked.connect(self.start_engine)
         self.stop_btn.clicked.connect(self.stop_engine)
         self.record_btn.clicked.connect(self.record_voiceprint)
         self.clear_vp_btn.clicked.connect(self.clear_voiceprint)
+
+        try:
+            from .perf import ProcessMonitor
+
+            self._perf = ProcessMonitor() if ProcessMonitor().available else None
+        except Exception:
+            self._perf = None
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(100)
         self.refresh_devices()
         self.refresh_voiceprint_label()
+        self._loading = False
         QTimer.singleShot(400, self._maybe_prompt_vbcable)
         if bool(self.config.get("app", {}).get("check_updates", True)):
             QTimer.singleShot(3000, lambda: self.check_updates(manual=False))
+
+    # ------------------------------------------------------------ 配置保存
+    def _save_config(self, reason: str = "") -> None:
+        """把当前配置写盘；失败时提示一次并写日志（不再静默丢设置）。"""
+        if self._loading:
+            return
+        try:
+            settings.save_config(self.config)
+        except Exception as exc:
+            log.warning("保存配置失败（%s）", reason, exc_info=True)
+            if not self._save_error_shown:
+                self._save_error_shown = True
+                self.status_label.setText(f"状态：设置保存失败（{exc}）")
+                QMessageBox.warning(
+                    self,
+                    "设置无法保存",
+                    f"写入配置文件失败：{exc}\n\n"
+                    f"程序会继续运行，但下次启动可能读不到这次改动。\n"
+                    f"可尝试把程序放到有写权限的目录（例如非 Program Files）。",
+                )
+
+    def _on_device_changed(self, _index: int = 0) -> None:
+        if self._loading or self.engine.running:
+            return
+        device = self._selected(self.input_combo if self.sender() is self.input_combo else self.output_combo)
+        if device is None:
+            return
+        if self.sender() is self.input_combo:
+            self.config["audio"]["input_device"] = device.name
+        else:
+            self.config["audio"]["output_device"] = device.name
+        self._save_config("设备选择")
+
+    def _on_mode_toggled(self, checked: bool) -> None:
+        if self._loading or not checked:
+            return
+        self.config["model"]["mode"] = self._mode()
+        self._save_config("锁定方式")
 
     # ------------------------------------------------------------ VB-CABLE
     def _vbcable_present(self) -> bool:
@@ -576,6 +657,7 @@ class MainWindow(QMainWindow):
     def _on_hostapi_changed(self, _index: int = 0) -> None:
         self.config["audio"]["hostapi"] = self._hostapi_value()
         self.refresh_devices()
+        self._save_config("驱动接口")
 
     # ------------------------------------------------------------ 延迟档位
     def _detect_profile(self) -> int:
@@ -762,6 +844,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_gate(self, checked: bool) -> None:
         self.config["denoise"]["enabled"] = bool(checked)
+        self._save_config("频谱门")
         if self.engine.running:
             self.status_label.setText(
                 "状态：频谱门已" + ("启用" if checked else "关闭") + "（实时生效，无需重启）"
@@ -839,6 +922,41 @@ class MainWindow(QMainWindow):
         self._set_controls_running(False)
 
     # ------------------------------------------------------------------ 刷新
+    _LEVEL_BANDS = (
+        (0.0, "#38c172"),    # 绿：正常
+        (0.70, "#f0b429"),   # 黄：偏大
+        (0.90, "#e3342f"),   # 红：接近过载
+    )
+
+    def _set_level(self, bar, label, peak: float) -> None:
+        """电平条 + 峰值 dB + 颜色分段（只在跨段时改样式，避免每 100 ms 刷 QSS）。"""
+        peak = max(0.0, min(1.0, float(peak)))
+        bar.setValue(int(round(peak * 100)))
+        if peak <= 0.0005:
+            text = "静音"
+        else:
+            db = 20.0 * math.log10(peak)
+            text = f"{db:6.1f} dB"
+            if peak >= 0.98:
+                text += "  过载"
+        label.setText(text)
+        label.setStyleSheet(
+            "color:#e3342f; font-family:Consolas,monospace; font-weight:600;"
+            if peak >= 0.98
+            else "color:#666; font-family:Consolas,monospace;"
+        )
+        band = ""
+        for threshold, color in self._LEVEL_BANDS:
+            if peak >= threshold:
+                band = color
+        if band != self._bar_band:
+            self._bar_band = band
+            for widget in (self.in_bar, self.out_bar):
+                widget.setStyleSheet(
+                    "QProgressBar { border:1px solid #cfd6e0; border-radius:6px; background:#f2f4f8; }"
+                    f"QProgressBar::chunk {{ border-radius:5px; background:{band}; }}"
+                )
+
     def _tick(self) -> None:
         self._poll_record_job()
         self._poll_install_job()
@@ -851,11 +969,15 @@ class MainWindow(QMainWindow):
 
         if stopped:
             # 停止后不再显示上一轮的"等待语音"，也不保留电平峰值
-            self.in_bar.setValue(0)
-            self.out_bar.setValue(0)
+            self._set_level(self.in_bar, self.in_peak_label, 0.0)
+            self._set_level(self.out_bar, self.out_peak_label, 0.0)
         else:
-            self.in_bar.setValue(int(min(1.0, float(snap.get("in_peak", 0.0))) * 100))
-            self.out_bar.setValue(int(min(1.0, float(snap.get("out_peak", 0.0))) * 100))
+            self._set_level(
+                self.in_bar, self.in_peak_label, float(snap.get("in_peak", 0.0))
+            )
+            self._set_level(
+                self.out_bar, self.out_peak_label, float(snap.get("out_peak", 0.0))
+            )
 
         model = str(snap.get("model", "off"))
         if stopped:
@@ -871,12 +993,23 @@ class MainWindow(QMainWindow):
                 f"延迟估算：{float(snap.get('latency_ms', 0)):.0f} ms"
                 f"（缓冲 {float(snap.get('buffer_ms', 0)):.0f} ms）"
             )
+
+        perf_text = ""
+        if self._perf is not None and time.time() - self._perf_at >= 1.0:
+            self._perf_stats = self._perf.sample()
+            self._perf_at = time.time()
+        if self._perf is not None:
+            perf_text = (
+                f"CPU：{self._perf_stats.get('cpu_percent', 0):.0f}%    "
+                f"内存：{self._perf_stats.get('mem_mb', 0):.0f} MB    "
+            )
+
         self.info_label.setText(
             f"{model_text}    {latency_text}    采样率：{snap.get('device_rate', 0)} Hz\n"
             f"采集块：{self.engine.chunk_ms} ms / 播放块：{self.engine.playback_block_ms} ms    "
             f"驱动：{float(snap.get('driver_ms', 0)):.0f} ms    "
             f"队列：{float(snap.get('queue_ms', 0)):.1f} ms    单次处理：{float(snap.get('infer_ms', 0)):.1f} ms\n"
-            f"欠载：{snap.get('underruns', 0)}    "
+            f"{perf_text}欠载：{snap.get('underruns', 0)}    "
             f"输入丢块：{snap.get('dropped_in', 0)}    输出丢样：{snap.get('dropped_out', 0)}"
         )
 

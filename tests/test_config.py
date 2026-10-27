@@ -105,6 +105,27 @@ class ConfigTests(unittest.TestCase):
         finally:
             target.unlink(missing_ok=True)
 
+    def test_user_config_wins_over_program_config(self):
+        """程序目录只读时保存会落到用户目录，下次启动必须读到用户目录那份。
+
+        否则界面上的设置（锁定方式、设备、频谱门…）永远"存不住"。
+        """
+        base = Path(__file__).resolve().parents[2]
+        program = base / "_cfg_program.toml"
+        user_dir = base / "_cfg_userdir"
+        settings.save_config(settings.normalize({"audio": {"chunk_ms": 80}}), program)
+        try:
+            user_dir.mkdir(parents=True, exist_ok=True)
+            with mock.patch.object(settings, "CONFIG_PATH", program), mock.patch.object(
+                settings, "fallback_config_path", return_value=user_dir / "config.toml"
+            ):
+                settings.save_config(settings.normalize({"audio": {"chunk_ms": 140}}))
+                loaded = settings.load_config()
+            self.assertEqual(loaded["audio"]["chunk_ms"], 140)
+        finally:
+            program.unlink(missing_ok=True)
+            shutil.rmtree(user_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
