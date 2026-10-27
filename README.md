@@ -18,6 +18,8 @@ VoxCall 是一款 Windows 实时通话降噪工具：用 **VoxLock** 做目标�
 - **底噪兜底**：可选的轻度频谱门，压低风扇、空调、电流声
 - **设备列表干净**：按驱动接口过滤，默认只列 WASAPI 设备
 - **实时指标**：延迟、缓冲、欠载、电平一眼可见，便于判断卡顿原因
+- **自动检查更新**：启动后静默查询 GitHub Releases，有新版本会提示并可一键打开下载页
+  （可在配置里关闭；也可以手动「帮助 → 检查更新…」）
 
 ## 系统要求
 
@@ -67,6 +69,8 @@ VoxCall ──输出──> CABLE Input ──(虚拟线)──> CABLE Output �
 | `model.mode` | `auto` / `calibrated` / `fixed` / `off`（只做路由） |
 | `model.precision` | `int8-full`（默认，最快）/ `int8` / `fp16` / `fp32` |
 | `denoise.enabled` | 轻度频谱门开关（也可在界面勾选，实时生效） |
+| `app.check_updates` | 启动时自动检查更新，默认 `true`；设成 `false` 完全关闭联网检查 |
+| `app.update_check_hours` | 自动检查的缓存时长，默认 12 小时（不会每次启动都请求） |
 
 ## 已知限制
 

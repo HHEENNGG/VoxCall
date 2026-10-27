@@ -52,6 +52,8 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "app": {
         "log_level": "INFO",
         "log_file": "",
+        "check_updates": True,
+        "update_check_hours": 12,
     },
 }
 

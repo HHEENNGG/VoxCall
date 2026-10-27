@@ -56,6 +56,7 @@ class MainWindow(QMainWindow):
         self._record_job: dict | None = None
         self._install_job: dict | None = None
         self._installer_watch: dict | None = None
+        self._update_job: dict | None = None
         self._vbcable_prompted = False
 
         self._build_menu()
@@ -209,6 +210,8 @@ class MainWindow(QMainWindow):
         self.refresh_devices()
         self.refresh_voiceprint_label()
         QTimer.singleShot(400, self._maybe_prompt_vbcable)
+        if bool(self.config.get("app", {}).get("check_updates", True)):
+            QTimer.singleShot(3000, lambda: self.check_updates(manual=False))
 
     # ------------------------------------------------------------ VB-CABLE
     def _vbcable_present(self) -> bool:
@@ -363,8 +366,83 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ 菜单
     def _build_menu(self) -> None:
         help_menu = self.menuBar().addMenu("帮助")
+        self.update_action = help_menu.addAction("检查更新…")
+        self.update_action.triggered.connect(lambda: self.check_updates(manual=True))
         about_action = help_menu.addAction("关于 VoxCall")
         about_action.triggered.connect(self.show_about)
+
+    # ------------------------------------------------------------ 检查更新
+    def check_updates(self, manual: bool = False) -> None:
+        from . import updater
+
+        job = self._update_job
+        if job is not None and not job.get("done"):
+            if manual:
+                self.status_label.setText("状态：正在检查更新…")
+            return
+        if manual:
+            self.update_action.setEnabled(False)
+            self.status_label.setText("状态：正在检查更新…")
+        job = {"done": False, "result": None, "error": None, "manual": manual}
+        self._update_job = job
+
+        def work() -> None:
+            try:
+                # 手动检查忽略缓存，自动检查走 12 小时缓存
+                job["result"] = updater.check(use_cache=not manual)
+            except Exception as exc:  # 线程里不能抛到 Qt
+                job["error"] = exc
+            finally:
+                job["done"] = True
+
+        threading.Thread(target=work, name="UpdateCheck", daemon=True).start()
+
+    def _poll_update_job(self) -> None:
+        job = self._update_job
+        if job is None or not job.get("done"):
+            return
+        self._update_job = None
+        self.update_action.setEnabled(True)
+        manual = bool(job.get("manual"))
+        result = job.get("result")
+
+        if job.get("error") is not None:
+            if manual:
+                QMessageBox.warning(self, "检查更新失败", str(job["error"]))
+            self.status_label.setText("状态：检查更新失败（网络问题？）")
+            return
+
+        if result is None:
+            if manual:
+                from . import VERSION
+
+                QMessageBox.information(self, "检查更新", f"当前已是最新版本（Beta {VERSION}）。")
+            self.status_label.setText("状态：已是最新版本")
+            return
+
+        self.status_label.setText(f"状态：发现新版本 {result.tag}，可在「帮助 → 检查更新」查看")
+        self._show_update_dialog(result)
+
+    def _show_update_dialog(self, release) -> None:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        box = QMessageBox(self)
+        box.setWindowTitle("发现新版本")
+        box.setIcon(QMessageBox.Information)
+        lines = [f"<b>VoxCall {release.tag}</b> 已发布", ""]
+        if release.name:
+            lines.append(release.name)
+        if release.published_at:
+            lines.append(f"发布时间：{release.published_at[:10]}")
+        if release.prerelease:
+            lines.append("（预发布版本）")
+        box.setText("<br>".join(lines) + "<br><br>是否打开发布页查看？")
+        open_btn = box.addButton("打开发布页", QMessageBox.AcceptRole)
+        box.addButton("稍后", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl(release.page_url))
 
     def show_about(self) -> None:
         from .about import show_about
@@ -646,6 +724,7 @@ class MainWindow(QMainWindow):
         self._poll_record_job()
         self._poll_install_job()
         self._poll_installer_exit()
+        self._poll_update_job()
         snap = self.engine.snapshot()
         state = str(snap.get("state", "idle"))
         stopped = state in {"idle", "error"}
