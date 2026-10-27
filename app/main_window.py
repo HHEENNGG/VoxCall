@@ -496,21 +496,46 @@ class MainWindow(QMainWindow):
             self.status_label.setText("状态：设置已保存")
 
     # ------------------------------------------------------------ 文件夹
+    def _show_folder_fallback(self, folder) -> None:
+        """打不开资源管理器时的兜底：把路径显示出来，可一键复制。"""
+        from PySide6.QtWidgets import QApplication
+
+        box = QMessageBox(self)
+        box.setWindowTitle("配置文件位置")
+        box.setIcon(QMessageBox.Information)
+        box.setText(
+            "没能自动打开资源管理器。\n\n配置/日志位置：\n"
+            f"{folder}\n\n可以复制路径后自己粘贴到资源管理器地址栏。"
+        )
+        copy_btn = box.addButton("复制路径", QMessageBox.ActionRole)
+        box.addButton("确定", QMessageBox.AcceptRole)
+        box.exec()
+        if box.clickedButton() is copy_btn:
+            QApplication.clipboard().setText(str(folder))
+            self.status_label.setText("状态：路径已复制到剪贴板")
+
     def open_config_folder(self) -> None:
         from . import shell
 
         folder = settings.active_config_path().parent
-        if not shell.open_path(folder):
-            self.status_label.setText(f"状态：无法打开文件夹 {folder}")
+        if shell.open_path(folder):
+            self.status_label.setText(f"状态：已打开 {folder}")
+        else:
+            self._show_folder_fallback(folder)
 
     def open_log_folder(self) -> None:
         from . import shell
         from .paths import ROOT
 
         folder = ROOT / "logs"
-        folder.mkdir(parents=True, exist_ok=True)
-        if not shell.open_path(folder):
-            self.status_label.setText(f"状态：无法打开文件夹 {folder}")
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            log.debug("创建日志目录失败", exc_info=True)
+        if shell.open_path(folder):
+            self.status_label.setText(f"状态：已打开 {folder}")
+        else:
+            self._show_folder_fallback(folder)
 
     # ------------------------------------------------------------ 托盘
     def _init_tray(self) -> None:
