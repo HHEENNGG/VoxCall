@@ -37,30 +37,40 @@ class OpenPathTests(unittest.TestCase):
     def test_existing_dir_opens_the_folder_itself(self):
         """文件夹要打开它自己，不能走「打开上级并选中」（那会打开上一级）。"""
         target = Path(__file__).resolve().parents[2]
-        with mock.patch.object(shell, "_open_folder_in_shell", return_value=True) as opener, mock.patch.object(
-            shell, "_reveal_in_shell"
-        ) as reveal:
+        with mock.patch.object(shell, "_launch_explorer", return_value=True) as launch, mock.patch.object(
+            shell, "_open_folder_in_shell"
+        ) as opener, mock.patch.object(shell, "_reveal_in_shell") as reveal:
+            self.assertTrue(shell.open_path(target))
+        launch.assert_called_once()
+        opener.assert_not_called()
+        reveal.assert_not_called()
+
+    def test_dir_falls_back_to_shell_when_explorer_fails(self):
+        """explorer 起不来（0xC0000142）时退回 shell 关联，仍然只开一次。"""
+        target = Path(__file__).resolve().parents[2]
+        with mock.patch.object(shell, "_launch_explorer", return_value=False), mock.patch.object(
+            shell, "_open_folder_in_shell", return_value=True
+        ) as opener:
             self.assertTrue(shell.open_path(target))
         opener.assert_called_once()
-        reveal.assert_not_called()
 
     def test_file_is_revealed_in_folder(self):
         target = Path(__file__).resolve()
-        with mock.patch.object(shell, "_open_folder_in_shell") as opener, mock.patch.object(
-            shell, "_reveal_in_shell", return_value=True
-        ) as reveal:
+        with mock.patch.object(shell, "_launch_explorer") as launch, mock.patch.object(
+            shell, "_open_folder_in_shell"
+        ) as opener, mock.patch.object(shell, "_reveal_in_shell", return_value=True) as reveal:
             self.assertTrue(shell.open_path(target))
         reveal.assert_called_once()
+        launch.assert_not_called()
         opener.assert_not_called()
 
-    def test_failed_open_returns_false_without_spawning_explorer(self):
-        """打不开就交回给界面兜底，绝不再自己起 explorer（会崩 0xC0000142）。"""
+    def test_failed_open_returns_false(self):
+        """两条路都失败就交回界面兜底。"""
         target = Path(__file__).resolve().parents[2]
-        with mock.patch.object(shell, "_open_folder_in_shell", return_value=False), mock.patch.object(
-            shell.subprocess, "Popen"
-        ) as popen:
+        with mock.patch.object(shell, "_launch_explorer", return_value=False), mock.patch.object(
+            shell, "_open_folder_in_shell", return_value=False
+        ):
             self.assertFalse(shell.open_path(target))
-        popen.assert_not_called()
 
 
 class MutexTests(unittest.TestCase):

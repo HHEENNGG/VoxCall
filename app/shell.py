@@ -170,9 +170,10 @@ def _launch_explorer(target: Path) -> bool:
 def open_path(path: str | os.PathLike) -> bool:
     """打开本地文件夹/文件。
 
-    - 文件夹：``ShellExecute`` 的 open 动作 → 打开文件夹**本身**（不是它的上一级），
-      由 shell 处理，不自己拼 explorer 命令行。
-    - 文件：用 ``SHOpenFolderAndSelectItems`` 打开所在目录并选中该文件。
+    - 文件夹：显式用 ``explorer.exe <目录>``（洁净环境）打开，**不走文件关联**——
+      用户的「打开文件夹」关联可能被改成了别的程序（比如 VoxCall 自己），
+      那样 ShellExecute 会把文件夹当成「用该程序打开」，看起来就像又启动了一次软件。
+    - 文件：``SHOpenFolderAndSelectItems`` 打开所在目录并选中该文件。
     任一失败返回 False，由调用方给出「显示路径 + 复制」的兜底。
     """
     target = Path(path)
@@ -181,7 +182,12 @@ def open_path(path: str | os.PathLike) -> bool:
         return False
 
     if os.name == "nt":
-        return _open_folder_in_shell(target) if target.is_dir() else _reveal_in_shell(target)
+        if target.is_dir():
+            if _launch_explorer(target):
+                return True
+            # explorer 起不来（0xC0000142 之类）再退回 shell 关联
+            return _open_folder_in_shell(target)
+        return _reveal_in_shell(target)
 
     try:
         os.startfile(str(target))  # type: ignore[attr-defined]

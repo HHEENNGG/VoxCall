@@ -39,15 +39,28 @@ def setup_logging(config: dict) -> None:
     level = getattr(logging, level_name, logging.INFO)
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
     log_file = str(app_cfg.get("log_file", "") or "")
+    targets: list[Path] = []
     if log_file:
         target = Path(log_file)
         if not target.is_absolute():
             target = ROOT / target
+        targets.append(target)
+    else:
+        # 默认写 logs/app.log：出问题时用户能直接把日志发过来
+        targets.append(ROOT / "logs" / "app.log")
+        try:
+            from app import settings as _settings
+
+            targets.append(_settings.state_dir() / "logs" / "app.log")
+        except Exception:
+            pass
+    for target in targets:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             handlers.append(logging.FileHandler(target, encoding="utf-8"))
+            break
         except OSError:
-            pass
+            continue
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",

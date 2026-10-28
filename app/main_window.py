@@ -518,7 +518,9 @@ class MainWindow(QMainWindow):
         from . import shell
 
         folder = settings.active_config_path().parent
-        if shell.open_path(folder):
+        opened = shell.open_path(folder)
+        log.info("打开配置文件夹：%s → %s", folder, opened)
+        if opened:
             self.status_label.setText(f"状态：已打开 {folder}")
         else:
             self._show_folder_fallback(folder)
@@ -532,7 +534,9 @@ class MainWindow(QMainWindow):
             folder.mkdir(parents=True, exist_ok=True)
         except OSError:
             log.debug("创建日志目录失败", exc_info=True)
-        if shell.open_path(folder):
+        opened = shell.open_path(folder)
+        log.info("打开日志文件夹：%s → %s", folder, opened)
+        if opened:
             self.status_label.setText(f"状态：已打开 {folder}")
         else:
             self._show_folder_fallback(folder)
