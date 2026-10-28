@@ -1,15 +1,16 @@
 """调用系统外壳打开文件/文件夹/网址。
 
-三个坑，都是实测踩出来的：
-
-1. Qt 的 ``QDesktopServices.openUrl(QUrl.fromLocalFile(path))`` 会把路径编码成
+踩过的坑（都实测过）：
+1. ``QDesktopServices.openUrl(QUrl.fromLocalFile(path))`` 会把路径编码成
    ``file:///D:/...``，中文/空格路径下 ShellExecute 直接失败（error 5）。
-2. 从打包后的进程里启动 ``explorer.exe``，它可能加载到 ``_internal`` 自带的
-   ``ucrtbase.dll`` / ``msvcp140.dll`` → ``explorer.exe - Application Error 0xc0000142``。
-3. 所以优先用 ``SHOpenFolderAndSelectItems``：它把请求交给**已经在运行的资源管理器**
-   （不新起进程），完全不受本进程环境/DLL 目录影响。
+2. 自己起 ``explorer.exe``（或让 ``ShellExecute`` 起）会继承本进程环境：
+   打包目录里的 ``_internal`` 带着 ``ucrtbase.dll`` / ``msvcp140.dll``，
+   explorer 加载到就被搞崩 → ``explorer.exe - Application Error 0xc0000142``。
+3. ``ShellExecuteW("open", 文件夹)`` 还遵守**文件关联**：如果「文件夹」的默认
+   打开方式被改成了某个程序，就会真的去启动那个程序（用户看到的「又开了一次软件」）。
 
-调用顺序：SHOpenFolderAndSelectItems → 净化环境启动 explorer → os.startfile。
+结论：打开文件夹只用 ``SHOpenFolderAndSelectItems`` —— 它把请求交给**已经在运行
+的资源管理器**，既不起新进程，也不读文件关联。
 """
 
 from __future__ import annotations
@@ -28,73 +29,13 @@ log = logging.getLogger(__name__)
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def _system_root() -> str:
-    return os.environ.get("SystemRoot") or r"C:\Windows"
-
-
-def _clean_env() -> dict[str, str]:
-    """给 explorer 用的干净环境：只留系统 PATH，剔掉打包器/运行时的目录。"""
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if key.upper() not in {"PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "QT_PLUGIN_PATH"}
-    }
-    root = _system_root()
-    system_path = os.pathsep.join(
-        [
-            os.path.join(root, "system32"),
-            root,
-            os.path.join(root, "System32", "Wbem"),
-            os.path.join(root, "System32", "WindowsPowerShell", "v1.0"),
-        ]
-    )
-
-    marked = ("_internal", "site-packages", "voxcall", "runtime")
-    keep: list[str] = []
-    for part in (os.environ.get("PATH") or "").split(os.pathsep):
-        part = part.strip()
-        if not part:
-            continue
-        lowered = part.lower().replace("/", "\\")
-        if any(token in lowered for token in marked):
-            continue
-        keep.append(part)
-    env["PATH"] = system_path + (os.pathsep + os.pathsep.join(keep) if keep else "")
-    return env
-
-
-def _open_folder_in_shell(target: Path) -> bool:
-    """打开文件夹本身（显示其内容），交给 shell 处理，不自己拼命令行。
-
-    注意：``SHOpenFolderAndSelectItems`` 的语义是「打开所在目录并选中该项」，
-    对文件夹用它会打开**上一级**，所以这里必须用 ShellExecute「open」。
-    """
-    if os.name != "nt":
-        return False
-    try:
-        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-        shell32.ShellExecuteW.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_wchar_p,
-            ctypes.c_int,
-        ]
-        shell32.ShellExecuteW.restype = ctypes.c_void_p
-        result = shell32.ShellExecuteW(None, "open", str(target), None, None, 1)
-        code = int(result or 0)
-        if code <= 32:
-            log.debug("ShellExecuteW 打开文件夹失败：%d", code)
-            return False
-        return True
-    except Exception:
-        log.debug("打开文件夹失败", exc_info=True)
-        return False
-
-
 def _reveal_in_shell(target: Path) -> bool:
-    """让正在运行的资源管理器打开该位置（不新起 explorer 进程）。"""
+    """让正在运行的资源管理器打开该位置（不新起进程，不读文件关联）。
+
+    对文件夹：``SHOpenFolderAndSelectItems(pidlFolder, 0, NULL, 0)`` 打开的就是
+    这个文件夹本身（cidl=0 表示不选中任何子项）。
+    对文件：打开它所在的目录并选中它。
+    """
     if os.name != "nt":
         return False
     try:
@@ -135,46 +76,12 @@ def _reveal_in_shell(target: Path) -> bool:
         return False
 
 
-def _launch_explorer(target: Path) -> bool:
-    """兜底：用净化后的环境 + 系统目录 cwd 启动 explorer.exe。
-
-    启动后短暂等一会：正常打开文件夹的 explorer 会一直活着；
-    如果它立刻以非 0 退出（典型是 0xC0000142 启动失败），就当作失败，
-    让调用方走「显示路径 + 复制」的兜底，而不是把系统错误框甩给用户。
-    """
-    explorer = Path(_system_root()) / "explorer.exe"
-    exe = str(explorer) if explorer.exists() else "explorer.exe"
-    try:
-        proc = subprocess.Popen(
-            [exe, str(target)],
-            env=_clean_env(),
-            cwd=_system_root(),
-            creationflags=_NO_WINDOW,
-            close_fds=True,
-        )
-    except Exception:
-        log.debug("explorer 打开失败：%s", target, exc_info=True)
-        return False
-
-    for _ in range(12):
-        time.sleep(0.1)
-        code = proc.poll()
-        if code is None:
-            return True
-        if code != 0:
-            log.warning("explorer 启动失败（退出码 0x%08X）", code & 0xFFFFFFFF)
-            return False
-    return True
-
-
 def open_path(path: str | os.PathLike) -> bool:
     """打开本地文件夹/文件。
 
-    - 文件夹：显式用 ``explorer.exe <目录>``（洁净环境）打开，**不走文件关联**——
-      用户的「打开文件夹」关联可能被改成了别的程序（比如 VoxCall 自己），
-      那样 ShellExecute 会把文件夹当成「用该程序打开」，看起来就像又启动了一次软件。
-    - 文件：``SHOpenFolderAndSelectItems`` 打开所在目录并选中该文件。
-    任一失败返回 False，由调用方给出「显示路径 + 复制」的兜底。
+    目录和文件都交给已运行的外壳（SHOpenFolderAndSelectItems），**绝不起新进程**：
+    这样既不会踩 explorer 的 0xC0000142，也不会被「文件夹关联被劫持」影响。
+    失败返回 False，由调用方给出「显示路径 + 复制路径」的兜底。
     """
     target = Path(path)
     if not target.exists():
@@ -182,12 +89,9 @@ def open_path(path: str | os.PathLike) -> bool:
         return False
 
     if os.name == "nt":
-        if target.is_dir():
-            if _launch_explorer(target):
-                return True
-            # explorer 起不来（0xC0000142 之类）再退回 shell 关联
-            return _open_folder_in_shell(target)
-        return _reveal_in_shell(target)
+        opened = _reveal_in_shell(target)
+        log.info("打开路径：%s → %s", target, opened)
+        return opened
 
     try:
         os.startfile(str(target))  # type: ignore[attr-defined]
