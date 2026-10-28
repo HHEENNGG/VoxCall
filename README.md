@@ -1,11 +1,23 @@
-# VoxCall · Beta 0.02
+<p align="center">
+  <img src="assets/icon-256.png" width="112" alt="VoxCall 图标">
+</p>
 
-[![tests](https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml/badge.svg)](https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml)
-[![release](https://img.shields.io/github/v/release/HHEENNGG/VoxCall?include_prereleases&label=release)](https://github.com/HHEENNGG/VoxCall/releases)
-[![license](https://img.shields.io/github/license/HHEENNGG/VoxCall)](LICENSE)
-[![platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue)](https://github.com/HHEENNGG/VoxCall)
+<h1 align="center">VoxCall · Beta 0.02</h1>
 
-![界面](docs/screenshot.png)
+<p align="center">
+  <a href="https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml"><img src="https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <a href="https://github.com/HHEENNGG/VoxCall/releases"><img src="https://img.shields.io/github/v/release/HHEENNGG/VoxCall?include_prereleases&label=release" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/HHEENNGG/VoxCall" alt="license"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-blue" alt="platform">
+</p>
+
+<p align="center">Windows 实时通话降噪 · 目标说话人隔离 + 虚拟麦克风</p>
+
+## 界面
+
+| 浅色 | 深色 |
+| --- | --- |
+| ![浅色界面](docs/screenshot.png) | ![深色界面](docs/dark.png) |
 
 VoxCall 是一款 Windows 实时通话降噪工具：用 **VoxLock** 做目标说话人隔离，只保留你的声音，
 再通过 **VB-CABLE** 把处理后的音频送进 Discord、QQ、游戏语音等任意通话软件。
