@@ -108,10 +108,11 @@ QComboBox QAbstractItemView {
 }
 QComboBox::drop-down { border: none; width: 18px; }
 QMenuBar { background-color: #23262c; }
-QMenuBar::item { background: transparent; padding: 4px 10px; }
+/* 8px 垂直内边距 + QMenu padding 0，使菜单栏/下拉菜单与原生的 33/52 px 完全一致 */
+QMenuBar::item { background: transparent; padding: 8px 10px; }
 QMenuBar::item:selected { background-color: #373b44; border-radius: 4px; }
-QMenu { background-color: #23262c; border: 1px solid #3a3d44; padding: 4px; }
-QMenu::item { padding: 5px 22px 5px 18px; border-radius: 4px; }
+QMenu { background-color: #23262c; border: 1px solid #3a3d44; padding: 3px; }
+QMenu::item { padding: 3px 22px 3px 18px; border-radius: 4px; }
 QMenu::item:selected { background-color: #3b6ea5; }
 QMenu::separator { height: 1px; background: #3a3d44; margin: 4px 8px; }
 QToolTip {
