@@ -34,20 +34,45 @@ class OpenPathTests(unittest.TestCase):
     def test_missing_path_returns_false(self):
         self.assertFalse(shell.open_path(Path(r"D:\definitely\missing\dir")))
 
-    def test_existing_dir_goes_through_shell(self):
+    def test_existing_dir_opens_the_folder_itself(self):
+        """文件夹要打开它自己，不能走「打开上级并选中」（那会打开上一级）。"""
         target = Path(__file__).resolve().parents[2]
-        with mock.patch.object(shell, "_reveal_in_shell", return_value=True) as reveal:
+        with mock.patch.object(shell, "_open_folder_in_shell", return_value=True) as opener, mock.patch.object(
+            shell, "_reveal_in_shell"
+        ) as reveal:
+            self.assertTrue(shell.open_path(target))
+        opener.assert_called_once()
+        reveal.assert_not_called()
+
+    def test_file_is_revealed_in_folder(self):
+        target = Path(__file__).resolve()
+        with mock.patch.object(shell, "_open_folder_in_shell") as opener, mock.patch.object(
+            shell, "_reveal_in_shell", return_value=True
+        ) as reveal:
             self.assertTrue(shell.open_path(target))
         reveal.assert_called_once()
+        opener.assert_not_called()
 
-    def test_failed_reveal_returns_false_without_spawning_explorer(self):
+    def test_failed_open_returns_false_without_spawning_explorer(self):
         """打不开就交回给界面兜底，绝不再自己起 explorer（会崩 0xC0000142）。"""
         target = Path(__file__).resolve().parents[2]
-        with mock.patch.object(shell, "_reveal_in_shell", return_value=False), mock.patch.object(
+        with mock.patch.object(shell, "_open_folder_in_shell", return_value=False), mock.patch.object(
             shell.subprocess, "Popen"
         ) as popen:
             self.assertFalse(shell.open_path(target))
         popen.assert_not_called()
+
+
+class MutexTests(unittest.TestCase):
+    def test_second_mutex_reports_exists(self):
+        from app.single_instance import ProcessMutex
+
+        first = ProcessMutex("Local\\VoxCall-test-mutex")
+        second = ProcessMutex("Local\\VoxCall-test-mutex")
+        if os.name != "nt":
+            self.skipTest("仅 Windows 有命名互斥体")
+        self.assertFalse(first.already_exists)
+        self.assertTrue(second.already_exists)
 
 
 if __name__ == "__main__":

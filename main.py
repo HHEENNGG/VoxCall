@@ -252,10 +252,17 @@ def run_gui(config: dict) -> int:
         pass
 
     # 单实例：已经在跑就唤起旧窗口，绝不开第二个
-    from app.single_instance import SingleInstance
+    # 先用命名互斥体判定（原子，没有启动竞态），再用管道把「显示窗口」转给旧实例。
+    from app.single_instance import ProcessMutex, SingleInstance
 
+    mutex = ProcessMutex()
     guard = SingleInstance()
-    if guard.already_running():
+    if mutex.already_exists:
+        # 旧实例可能还没开始监听管道（PyInstaller 启动有几秒），重试几次
+        for _ in range(10):
+            if guard.already_running():
+                break
+            time.sleep(0.3)
         return 0
 
     window = MainWindow(config)

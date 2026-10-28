@@ -7,7 +7,10 @@
 
 from __future__ import annotations
 
+import ctypes
 import logging
+import os
+from ctypes import wintypes
 
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
@@ -15,6 +18,33 @@ log = logging.getLogger(__name__)
 
 MESSAGE_SHOW = b"show\n"
 MESSAGE_ACK = b"ok\n"
+
+ERROR_ALREADY_EXISTS = 183
+
+
+class ProcessMutex:
+    """进程级互斥（Windows 命名互斥体）。
+
+    在 PyInstaller 启动阶段（几百毫秒到几秒）里 QLocalServer 还没起来，
+    只靠管道判断会出现「连点两次打开两个窗口」；互斥体是原子的，没有竞态。
+    """
+
+    def __init__(self, name: str = "Local\\VoxCall-Beta-0.01") -> None:
+        self.already_exists = False
+        self._handle = None
+        if os.name != "nt":
+            return
+        try:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, ctypes.c_wchar_p]
+            kernel32.CreateMutexW.restype = wintypes.HANDLE
+            handle = kernel32.CreateMutexW(None, True, name)
+            if not handle:
+                return
+            self._handle = handle
+            self.already_exists = ctypes.get_last_error() == ERROR_ALREADY_EXISTS
+        except Exception:
+            log.debug("创建互斥体失败", exc_info=True)
 
 
 class SingleInstance:

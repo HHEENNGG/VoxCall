@@ -63,6 +63,36 @@ def _clean_env() -> dict[str, str]:
     return env
 
 
+def _open_folder_in_shell(target: Path) -> bool:
+    """打开文件夹本身（显示其内容），交给 shell 处理，不自己拼命令行。
+
+    注意：``SHOpenFolderAndSelectItems`` 的语义是「打开所在目录并选中该项」，
+    对文件夹用它会打开**上一级**，所以这里必须用 ShellExecute「open」。
+    """
+    if os.name != "nt":
+        return False
+    try:
+        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+        shell32.ShellExecuteW.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_wchar_p,
+            ctypes.c_int,
+        ]
+        shell32.ShellExecuteW.restype = ctypes.c_void_p
+        result = shell32.ShellExecuteW(None, "open", str(target), None, None, 1)
+        code = int(result or 0)
+        if code <= 32:
+            log.debug("ShellExecuteW 打开文件夹失败：%d", code)
+            return False
+        return True
+    except Exception:
+        log.debug("打开文件夹失败", exc_info=True)
+        return False
+
+
 def _reveal_in_shell(target: Path) -> bool:
     """让正在运行的资源管理器打开该位置（不新起 explorer 进程）。"""
     if os.name != "nt":
@@ -140,17 +170,18 @@ def _launch_explorer(target: Path) -> bool:
 def open_path(path: str | os.PathLike) -> bool:
     """打开本地文件夹/文件。
 
-    文件夹只走 ``SHOpenFolderAndSelectItems``：它让**已经在运行的**资源管理器来打开，
-    不新起进程，因此不会继承打包环境而崩在 0xC0000142。失败就返回 False，
-    由调用方给出「显示路径 + 复制」的兜底（绝不再自己 spawn explorer）。
+    - 文件夹：``ShellExecute`` 的 open 动作 → 打开文件夹**本身**（不是它的上一级），
+      由 shell 处理，不自己拼 explorer 命令行。
+    - 文件：用 ``SHOpenFolderAndSelectItems`` 打开所在目录并选中该文件。
+    任一失败返回 False，由调用方给出「显示路径 + 复制」的兜底。
     """
     target = Path(path)
     if not target.exists():
         log.warning("路径不存在：%s", target)
         return False
 
-    if os.name == "nt" and target.is_dir():
-        return _reveal_in_shell(target)
+    if os.name == "nt":
+        return _open_folder_in_shell(target) if target.is_dir() else _reveal_in_shell(target)
 
     try:
         os.startfile(str(target))  # type: ignore[attr-defined]
@@ -158,13 +189,12 @@ def open_path(path: str | os.PathLike) -> bool:
     except Exception:
         log.debug("os.startfile 失败", exc_info=True)
 
-    if os.name != "nt":
-        try:
-            opener = "open" if sys.platform == "darwin" else "xdg-open"
-            subprocess.Popen([opener, str(target)], creationflags=_NO_WINDOW)
-            return True
-        except Exception:
-            log.warning("打开路径失败：%s", target, exc_info=True)
+    try:
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.Popen([opener, str(target)], creationflags=_NO_WINDOW)
+        return True
+    except Exception:
+        log.warning("打开路径失败：%s", target, exc_info=True)
     return False
 
 
