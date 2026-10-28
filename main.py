@@ -250,6 +250,12 @@ def run_gui(config: dict) -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("VoxCall")
     app.setApplicationVersion(VERSION)
+    try:  # 记住系统默认调色板，主题切回浅色时还原
+        from app import theme as theme_mod
+
+        theme_mod.remember_default_palette(app.palette())
+    except Exception:
+        pass
 
     try:  # 窗口/任务栏图标
         from PySide6.QtGui import QIcon

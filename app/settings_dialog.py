@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import settings
+from . import settings, theme
 
 MODE_CHOICES = [
     ("auto", "自动识别（开始后说 3 秒）"),
@@ -42,6 +42,18 @@ class SettingsDialog(QDialog):
         model_cfg = config.setdefault("model", {})
 
         root = QVBoxLayout(self)
+
+        # ---- 外观
+        look_box = QGroupBox("外观")
+        look_form = QFormLayout(look_box)
+        self.theme_combo = QComboBox()
+        for value, label in theme.CHOICES:
+            self.theme_combo.addItem(label, value)
+        index = self.theme_combo.findData(str(app_cfg.get("theme", "auto")))
+        self.theme_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.theme_combo.setToolTip("「跟随系统」会随 Windows 深浅色设置自动切换")
+        look_form.addRow("主题", self.theme_combo)
+        root.addWidget(look_box)
 
         # ---- 启动与托盘
         tray_box = QGroupBox("启动与托盘")
@@ -128,6 +140,7 @@ class SettingsDialog(QDialog):
         app_cfg["start_minimized"] = self.start_minimized.isChecked()
         app_cfg["check_updates"] = self.check_updates.isChecked()
         app_cfg["update_check_hours"] = int(self.update_hours.value())
+        app_cfg["theme"] = str(self.theme_combo.currentData() or "auto")
 
         audio_cfg["chunk_ms"] = int(self.chunk_ms.value())
         audio_cfg["target_latency_ms"] = int(self.target_ms.value())

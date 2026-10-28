@@ -56,6 +56,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "update_check_hours": 12,
         "close_to_tray": True,
         "start_minimized": False,
+        "theme": "auto",
     },
 }
 
@@ -151,6 +152,11 @@ def normalize(raw: dict) -> dict:
 
     app["log_level"] = str(app["log_level"] or "INFO").upper()
     app["log_file"] = str(app["log_file"] or "")
+    theme = str(app.get("theme") or "auto").strip().lower()
+    if theme not in ("auto", "light", "dark"):
+        log.warning("app.theme=%r 非法，使用 auto", app.get("theme"))
+        theme = "auto"
+    app["theme"] = theme
     return cfg
 
 

@@ -226,7 +226,7 @@ class MainWindow(QMainWindow):
             "VoxLock 主要抑制其他说话人，不保证消除键盘敲击等瞬态噪声。"
         )
         help_label.setWordWrap(True)
-        help_label.setStyleSheet("color: #666;")
+        self.help_label = help_label
         layout.addWidget(help_label)
 
         self.setCentralWidget(root)
@@ -256,10 +256,60 @@ class MainWindow(QMainWindow):
         self.timer.start(100)
         self.refresh_devices()
         self.refresh_voiceprint_label()
+        self._apply_theme()
         self._loading = False
         QTimer.singleShot(400, self._maybe_prompt_vbcable)
         if bool(self.config.get("app", {}).get("check_updates", True)):
             QTimer.singleShot(3000, lambda: self.check_updates(manual=False))
+
+    # ------------------------------------------------------------ 主题
+    def _poll_system_theme(self) -> None:
+        """跟随系统时，每 3 秒看一次系统深浅色有没有变（注册表最可靠）。"""
+        if self._theme_pref() != "auto":
+            return
+        now = time.time()
+        if now - getattr(self, "_theme_checked_at", 0.0) < 3.0:
+            return
+        self._theme_checked_at = now
+        from . import theme
+
+        scheme = "dark" if theme.system_is_dark() else "light"
+        if scheme != getattr(self, "_theme_scheme", None):
+            self._theme_scheme = None  # 让 _apply_theme 重新应用
+            self._apply_theme()
+
+    def _theme_pref(self) -> str:
+        return str(self.config.get("app", {}).get("theme", "auto"))
+
+    def _apply_theme(self) -> None:
+        """按配置（auto/light/dark）应用调色板 + 样式表。"""
+        from PySide6.QtWidgets import QApplication
+
+        from . import theme
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        pref = self._theme_pref()
+        scheme = theme.resolve(pref)
+        if getattr(self, "_theme_scheme", None) == scheme:
+            return
+        self._theme_scheme = scheme
+        app.setPalette(theme.palette(pref))
+        app.setStyleSheet(theme.stylesheet(pref))
+        self._bar_band = None  # 强制重建电平条 QSS（轨道色随主题变）
+        self.help_label.setStyleSheet("color: %s;" % theme.MUTED[scheme])
+        if getattr(self, "_tray", None) is not None:
+            self._update_tray_actions()
+
+    def _set_theme_pref(self, pref: str) -> None:
+        self.config.setdefault("app", {})["theme"] = pref
+        self._save_config("主题")
+        self._apply_theme()
+        if getattr(self, "_theme_actions", None):
+            action = self._theme_actions.get(pref)
+            if action is not None and not action.isChecked():
+                action.setChecked(True)
 
     # ------------------------------------------------------------ 配置保存
     def _save_config(self, reason: str = "") -> None:
@@ -471,6 +521,24 @@ class MainWindow(QMainWindow):
         tools_menu.addAction("打开配置文件夹", self.open_config_folder)
         tools_menu.addAction("打开日志文件夹", self.open_log_folder)
 
+        view_menu = bar.addMenu("视图")
+        from PySide6.QtGui import QActionGroup
+
+        from . import theme as theme_mod
+
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        self._theme_actions = {}
+        for value, label in theme_mod.CHOICES:
+            action = view_menu.addAction(label)
+            action.setCheckable(True)
+            action.setActionGroup(group)
+            action.triggered.connect(lambda _checked=False, v=value: self._set_theme_pref(v))
+            self._theme_actions[value] = action
+        current = self._theme_actions.get(self._theme_pref())
+        if current is not None:
+            current.setChecked(True)
+
         help_menu = bar.addMenu("帮助")
         help_menu.addAction("关于 VoxCall", self.show_about)
 
@@ -487,6 +555,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "保存设置失败", str(exc))
             return
         # 立即生效的部分
+        self._apply_theme()
         self._update_tray_actions()
         if not self.config.get("app", {}).get("check_updates", True):
             self.status_label.setText("状态：已关闭自动更新检查")
@@ -968,10 +1037,13 @@ class MainWindow(QMainWindow):
             if peak >= 0.98:
                 text += "  过载"
         label.setText(text)
+        from . import theme as theme_mod
+
+        scheme = getattr(self, "_theme_scheme", "light")
         label.setStyleSheet(
             "color:#e3342f; font-family:Consolas,monospace; font-weight:600;"
             if peak >= 0.98
-            else "color:#666; font-family:Consolas,monospace;"
+            else f"color:{theme_mod.MUTED[scheme]}; font-family:Consolas,monospace;"
         )
         band = ""
         for threshold, color in self._LEVEL_BANDS:
@@ -981,7 +1053,8 @@ class MainWindow(QMainWindow):
             self._bar_band = band
             for widget in (self.in_bar, self.out_bar):
                 widget.setStyleSheet(
-                    "QProgressBar { border:1px solid #cfd6e0; border-radius:6px; background:#f2f4f8; }"
+                    f"QProgressBar {{ border:1px solid {theme_mod.BORDER[scheme]}; "
+                    f"border-radius:6px; background:{theme_mod.TRACK[scheme]}; }}"
                     f"QProgressBar::chunk {{ border-radius:5px; background:{band}; }}"
                 )
 
@@ -990,6 +1063,7 @@ class MainWindow(QMainWindow):
         self._poll_install_job()
         self._poll_installer_exit()
         self._poll_update_job()
+        self._poll_system_theme()
         snap = self.engine.snapshot()
         state = str(snap.get("state", "idle"))
         stopped = state in {"idle", "error"}
