@@ -3,6 +3,9 @@
 Windows 的深浅色存在注册表 ``HKCU\\...\\Themes\\Personalize\\AppsUseLightTheme``
 （1=浅色、0=深色）。Qt 6.5+ 也会通过 ``QStyleHints.colorScheme`` 暴露同一信息，
 这里两者都试，注册表优先（更贴近系统设置页的实际状态）。
+
+浅色与深色**共用同一份样式表**，只是配色不同——这样两套主题的控件尺寸完全一致，
+不会出现菜单栏/按钮高矮不一的情况。
 """
 
 from __future__ import annotations
@@ -22,9 +25,120 @@ CHOICES = [
 ]
 PREFS = tuple(value for value, _label in CHOICES)
 
-MUTED = {"light": "#666666", "dark": "#9aa4b2"}
-TRACK = {"light": "#f2f4f8", "dark": "#2c2f36"}
-BORDER = {"light": "#cfd6e0", "dark": "#40444d"}
+PALETTES: dict[str, dict[str, str]] = {
+    "light": {
+        "window": "#f4f5f7",
+        "panel": "#ffffff",
+        "field": "#ffffff",
+        "field_alt": "#eef0f4",
+        "text": "#1f2328",
+        "muted": "#5c6675",
+        "border": "#c8d0db",
+        "indicator": "#9aa4b2",
+        "button": "#ffffff",
+        "button_hover": "#eef1f6",
+        "button_pressed": "#e2e7ee",
+        "button_disabled": "#b6bdc7",
+        "highlight": "#2f6fd0",
+        "highlight_border": "#2f6fd0",
+        "menu": "#ffffff",
+        "menu_hover": "#e6ecf6",
+        "separator": "#dde2ea",
+        "track": "#e9ecf1",
+        "scroll": "#c3cad4",
+        "tooltip_bg": "#ffffe1",
+        "tooltip_text": "#1f2328",
+    },
+    "dark": {
+        "window": "#1f2126",
+        "panel": "#1f2126",
+        "field": "#2c2f36",
+        "field_alt": "#262a31",
+        "text": "#e6e6e6",
+        "muted": "#9aa4b2",
+        "border": "#40444d",
+        "indicator": "#6b7280",
+        "button": "#2c2f36",
+        "button_hover": "#373b44",
+        "button_pressed": "#23262c",
+        "button_disabled": "#6b7280",
+        "highlight": "#3b6ea5",
+        "highlight_border": "#8fc2ee",
+        "menu": "#23262c",
+        "menu_hover": "#373b44",
+        "separator": "#3a3d44",
+        "track": "#2c2f36",
+        "scroll": "#4a4f59",
+        "tooltip_bg": "#2c2f36",
+        "tooltip_text": "#e6e6e6",
+    },
+}
+
+# 兼容旧代码里的取色常量
+MUTED = {name: colors["muted"] for name, colors in PALETTES.items()}
+TRACK = {name: colors["track"] for name, colors in PALETTES.items()}
+BORDER = {name: colors["border"] for name, colors in PALETTES.items()}
+
+_STYLE = """
+QWidget {{ background-color: {window}; color: {text}; }}
+QMainWindow, QDialog {{ background-color: {window}; }}
+QGroupBox {{
+    border: 1px solid {separator}; border-radius: 7px;
+    margin-top: 12px; padding-top: 6px;
+    background-color: {panel};
+}}
+QGroupBox::title {{
+    subcontrol-origin: margin; subcontrol-position: top left;
+    left: 10px; padding: 0 4px; color: {muted};
+}}
+QLabel {{ background: transparent; }}
+QCheckBox, QRadioButton {{ color: {text}; background: transparent; spacing: 7px; }}
+QCheckBox::indicator, QRadioButton::indicator {{
+    width: 15px; height: 15px;
+    border: 1px solid {indicator}; background-color: {field};
+}}
+QCheckBox::indicator {{ border-radius: 3px; }}
+QRadioButton::indicator {{ border-radius: 8px; }}
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+    background-color: {highlight}; border-color: {highlight_border};
+}}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+    border-color: {button_disabled}; background-color: {field_alt};
+}}
+QPushButton {{
+    background-color: {button}; border: 1px solid {border};
+    border-radius: 6px; padding: 5px 14px; min-height: 20px;
+}}
+QPushButton:hover {{ background-color: {button_hover}; }}
+QPushButton:pressed {{ background-color: {button_pressed}; }}
+QPushButton:disabled {{ color: {button_disabled}; border-color: {separator}; }}
+QComboBox, QSpinBox, QLineEdit {{
+    background-color: {field}; border: 1px solid {border};
+    border-radius: 6px; padding: 4px 8px; min-height: 20px;
+}}
+QComboBox:hover, QSpinBox:hover {{ border-color: {indicator}; }}
+QComboBox QAbstractItemView {{
+    background-color: {field}; border: 1px solid {border};
+    selection-background-color: {highlight}; selection-color: #ffffff;
+}}
+QComboBox::drop-down {{ border: none; width: 18px; }}
+QMenuBar {{ background-color: {menu}; }}
+/* 8px 垂直内边距：与原生菜单栏度量（33 px）一致 */
+QMenuBar::item {{ background: transparent; padding: 8px 10px; }}
+QMenuBar::item:selected {{ background-color: {menu_hover}; border-radius: 4px; }}
+QMenu {{ background-color: {menu}; border: 1px solid {separator}; padding: 3px; }}
+QMenu::item {{ padding: 3px 22px 3px 18px; border-radius: 4px; }}
+QMenu::item:selected {{ background-color: {highlight}; color: #ffffff; }}
+QMenu::separator {{ height: 1px; background: {separator}; margin: 4px 8px; }}
+QToolTip {{
+    background-color: {tooltip_bg}; color: {tooltip_text};
+    border: 1px solid {border}; padding: 4px 6px;
+}}
+QProgressBar {{ border: 1px solid {border}; border-radius: 6px; background: {track}; }}
+QScrollBar:vertical {{ background: {field_alt}; width: 10px; margin: 0; }}
+QScrollBar::handle:vertical {{ background: {scroll}; border-radius: 5px; min-height: 24px; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
+"""
 
 
 def system_is_dark() -> bool:
@@ -62,113 +176,70 @@ def resolve(pref: str) -> Scheme:
 
 
 def muted(pref: str) -> str:
-    return MUTED[resolve(pref)]
+    return PALETTES[resolve(pref)]["muted"]
 
 
-STYLE_DARK = """
-QWidget { background-color: #1f2126; color: #e6e6e6; }
-QMainWindow, QDialog { background-color: #1f2126; }
-QGroupBox {
-    border: 1px solid #3a3d44; border-radius: 7px;
-    margin-top: 12px; padding-top: 6px;
-}
-QGroupBox::title {
-    subcontrol-origin: margin; subcontrol-position: top left;
-    left: 10px; padding: 0 4px; color: #aab4c2;
-}
-QLabel { background: transparent; }
-QCheckBox, QRadioButton { color: #e6e6e6; background: transparent; spacing: 7px; }
-QCheckBox::indicator, QRadioButton::indicator {
-    width: 15px; height: 15px;
-    border: 1px solid #6b7280; background-color: #2c2f36;
-}
-QCheckBox::indicator { border-radius: 3px; }
-QRadioButton::indicator { border-radius: 8px; }
-QCheckBox::indicator:checked, QRadioButton::indicator:checked {
-    background-color: #5b9bd5; border-color: #8fc2ee;
-}
-QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {
-    border-color: #3a3d44; background-color: #23262c;
-}
-QPushButton {
-    background-color: #2c2f36; border: 1px solid #40444d;
-    border-radius: 6px; padding: 5px 14px; min-height: 20px;
-}
-QPushButton:hover { background-color: #373b44; }
-QPushButton:pressed { background-color: #23262c; }
-QPushButton:disabled { color: #6b7280; border-color: #2f333a; }
-QComboBox, QSpinBox, QLineEdit {
-    background-color: #2c2f36; border: 1px solid #40444d;
-    border-radius: 6px; padding: 4px 8px; min-height: 20px;
-}
-QComboBox:hover, QSpinBox:hover { border-color: #4d525c; }
-QComboBox QAbstractItemView {
-    background-color: #2c2f36; border: 1px solid #40444d;
-    selection-background-color: #3b6ea5; selection-color: #ffffff;
-}
-QComboBox::drop-down { border: none; width: 18px; }
-QMenuBar { background-color: #23262c; }
-/* 8px 垂直内边距 + QMenu padding 0，使菜单栏/下拉菜单与原生的 33/52 px 完全一致 */
-QMenuBar::item { background: transparent; padding: 8px 10px; }
-QMenuBar::item:selected { background-color: #373b44; border-radius: 4px; }
-QMenu { background-color: #23262c; border: 1px solid #3a3d44; padding: 3px; }
-QMenu::item { padding: 3px 22px 3px 18px; border-radius: 4px; }
-QMenu::item:selected { background-color: #3b6ea5; }
-QMenu::separator { height: 1px; background: #3a3d44; margin: 4px 8px; }
-QToolTip {
-    background-color: #2c2f36; color: #e6e6e6;
-    border: 1px solid #40444d; padding: 4px 6px;
-}
-QProgressBar { border: 1px solid #40444d; border-radius: 6px; background: #2c2f36; }
-QScrollBar:vertical { background: #23262c; width: 10px; margin: 0; }
-QScrollBar::handle:vertical { background: #4a4f59; border-radius: 5px; min-height: 24px; }
-QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
-"""
+def colors(pref: str) -> dict[str, str]:
+    return PALETTES[resolve(pref)]
 
 
 def stylesheet(pref: str) -> str:
-    return STYLE_DARK if resolve(pref) == "dark" else ""
+    """两套主题共用同一份 QSS，保证控件尺寸完全一致。"""
+    return _STYLE.format(**colors(pref))
 
 
 _DEFAULT_PALETTE = None
 
 
 def remember_default_palette(pal) -> None:
-    """在应用启动时记下系统默认调色板，切回浅色时用它（比 standardPalette 更准）。"""
+    """在应用启动时记下系统默认调色板（浅色的兜底）。"""
     global _DEFAULT_PALETTE
     _DEFAULT_PALETTE = pal
 
 
-def palette(pref: str):
-    """返回 QPalette；深色时给出完整调色板，浅色时用系统默认调色板。"""
+def _build_dark_palette():
     from PySide6.QtGui import QColor, QPalette
-    from PySide6.QtWidgets import QApplication
 
-    scheme = resolve(pref)
-    if scheme == "light":
-        if _DEFAULT_PALETTE is not None:
-            return _DEFAULT_PALETTE
-        return QApplication.style().standardPalette()
-
+    c = PALETTES["dark"]
     pal = QPalette()
-    window = QColor("#1f2126")
-    base = QColor("#2c2f36")
-    text = QColor("#e6e6e6")
-    disabled = QColor("#6b7280")
-    pal.setColor(QPalette.Window, window)
-    pal.setColor(QPalette.WindowText, text)
-    pal.setColor(QPalette.Base, base)
-    pal.setColor(QPalette.AlternateBase, QColor("#262a31"))
-    pal.setColor(QPalette.ToolTipBase, base)
-    pal.setColor(QPalette.ToolTipText, text)
-    pal.setColor(QPalette.Text, text)
-    pal.setColor(QPalette.Button, QColor("#2c2f36"))
-    pal.setColor(QPalette.ButtonText, text)
+    pal.setColor(QPalette.Window, QColor(c["window"]))
+    pal.setColor(QPalette.WindowText, QColor(c["text"]))
+    pal.setColor(QPalette.Base, QColor(c["field"]))
+    pal.setColor(QPalette.AlternateBase, QColor(c["field_alt"]))
+    pal.setColor(QPalette.ToolTipBase, QColor(c["field"]))
+    pal.setColor(QPalette.ToolTipText, QColor(c["text"]))
+    pal.setColor(QPalette.Text, QColor(c["text"]))
+    pal.setColor(QPalette.Button, QColor(c["field"]))
+    pal.setColor(QPalette.ButtonText, QColor(c["text"]))
     pal.setColor(QPalette.BrightText, QColor("#ff6b6b"))
-    pal.setColor(QPalette.Highlight, QColor("#3b6ea5"))
+    pal.setColor(QPalette.Highlight, QColor(c["highlight"]))
     pal.setColor(QPalette.HighlightedText, QColor("#ffffff"))
     pal.setColor(QPalette.Link, QColor("#6ea8fe"))
     pal.setColor(QPalette.PlaceholderText, QColor("#8b95a5"))
     for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
-        pal.setColor(QPalette.Disabled, role, disabled)
+        pal.setColor(QPalette.Disabled, role, QColor(c["button_disabled"]))
     return pal
+
+
+def _build_light_palette():
+    from PySide6.QtGui import QColor, QPalette
+
+    c = PALETTES["light"]
+    pal = QPalette(_DEFAULT_PALETTE) if _DEFAULT_PALETTE is not None else QPalette()
+    pal.setColor(QPalette.Window, QColor(c["window"]))
+    pal.setColor(QPalette.WindowText, QColor(c["text"]))
+    pal.setColor(QPalette.Base, QColor(c["field"]))
+    pal.setColor(QPalette.AlternateBase, QColor(c["field_alt"]))
+    pal.setColor(QPalette.Text, QColor(c["text"]))
+    pal.setColor(QPalette.Button, QColor(c["button"]))
+    pal.setColor(QPalette.ButtonText, QColor(c["text"]))
+    pal.setColor(QPalette.Highlight, QColor(c["highlight"]))
+    pal.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+    pal.setColor(QPalette.ToolTipBase, QColor(c["tooltip_bg"]))
+    pal.setColor(QPalette.ToolTipText, QColor(c["tooltip_text"]))
+    return pal
+
+
+def palette(pref: str):
+    """返回与样式表配套的 QPalette。"""
+    return _build_dark_palette() if resolve(pref) == "dark" else _build_light_palette()
