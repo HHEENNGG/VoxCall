@@ -1,4 +1,4 @@
-# VoxCall · Beta 0.01
+# VoxCall · Beta 0.02
 
 [![tests](https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml/badge.svg)](https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml)
 [![release](https://img.shields.io/github/v/release/HHEENNGG/VoxCall?include_prereleases&label=release)](https://github.com/HHEENNGG/VoxCall/releases)
@@ -148,5 +148,5 @@ build_exe.ps1        打包 PyInstaller onedir
 
 ---
 
-版本 **Beta 0.01** · 作者 **老鼠秋日私语**
+版本 **Beta 0.02** · 作者 **老鼠秋日私语**
 由 AI 辅助编写

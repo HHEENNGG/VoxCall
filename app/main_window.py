@@ -641,10 +641,12 @@ class MainWindow(QMainWindow):
     def _update_tray_actions(self) -> None:
         if getattr(self, "_tray", None) is None:
             return
+        from . import CHANNEL, VERSION
+
         running = self.engine.running
         self._tray_toggle_action.setText("停止降噪" if running else "开始降噪")
         self._tray.setToolTip(
-            "VoxCall Beta 0.01 · " + ("运行中" if running else "就绪")
+            f"VoxCall {CHANNEL} {VERSION} · " + ("运行中" if running else "就绪")
         )
 
     def show_window(self) -> None:

@@ -23,7 +23,7 @@ else:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-VERSION = "0.01"
+VERSION = "0.02"
 CHANNEL = "Beta"
 VERSION_TEXT = f"{CHANNEL} {VERSION}"
 try:  # 版本号以 app/__init__.py 为准

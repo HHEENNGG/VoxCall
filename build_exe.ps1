@@ -85,7 +85,7 @@ Write-Host "打包完成：$out（约 $size MB）" -ForegroundColor Green
 Write-Host "  双击 VoxCall.exe 即可运行（无控制台）。" -ForegroundColor Gray
 
 if ($Zip) {
-    $zipPath = Join-Path $PSScriptRoot "VoxCall-0.01-beta-Win64.zip"
+    $zipPath = Join-Path $PSScriptRoot "VoxCall-0.02-beta-Win64.zip"
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
     Write-Host "压缩中（280 MB 左右，需要几分钟）…" -ForegroundColor Cyan
     Compress-Archive -Path $out -DestinationPath $zipPath -CompressionLevel Optimal

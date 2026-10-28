@@ -29,7 +29,7 @@ class ProcessMutex:
     只靠管道判断会出现「连点两次打开两个窗口」；互斥体是原子的，没有竞态。
     """
 
-    def __init__(self, name: str = "Local\\VoxCall-Beta-0.01") -> None:
+    def __init__(self, name: str = "Local\\VoxCall-Beta") -> None:
         self.already_exists = False
         self._handle = None
         if os.name != "nt":
@@ -48,7 +48,7 @@ class ProcessMutex:
 
 
 class SingleInstance:
-    def __init__(self, key: str = "VoxCall-Beta-0.01") -> None:
+    def __init__(self, key: str = "VoxCall-Beta") -> None:
         self.key = key
         self._server: QLocalServer | None = None
 

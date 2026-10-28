@@ -57,9 +57,9 @@ class CheckTests(unittest.TestCase):
     def test_reports_newer_release(self):
         payload = [
             {
-                "tag_name": "v0.02-beta",
-                "name": "VoxCall Beta 0.02",
-                "html_url": "https://github.com/HHEENNGG/VoxCall/releases/tag/v0.02-beta",
+                "tag_name": "v0.99-beta",
+                "name": "VoxCall Beta 0.99",
+                "html_url": "https://github.com/HHEENNGG/VoxCall/releases/tag/v0.99-beta",
                 "prerelease": True,
                 "published_at": "2026-11-01T00:00:00Z",
                 "body": "- 新东西",
@@ -68,8 +68,8 @@ class CheckTests(unittest.TestCase):
         with mock.patch.object(updater, "_fetch", return_value=payload):
             release = updater.check(use_cache=False)
         self.assertIsNotNone(release)
-        self.assertEqual(release.tag, "v0.02-beta")
-        self.assertTrue(release.page_url.endswith("v0.02-beta"))
+        self.assertEqual(release.tag, "v0.99-beta")
+        self.assertTrue(release.page_url.endswith("v0.99-beta"))
 
     def test_same_version_means_no_update(self):
         payload = [
