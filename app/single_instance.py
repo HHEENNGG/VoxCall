@@ -3,6 +3,9 @@
 注意：Windows 上 QLocalServer 用命名管道，进程被强杀后管道名可能残留，
 光靠「能连上」判断会误以为已有实例在跑，导致新进程直接退出（表现为双击没反应）。
 所以这里加了应答确认：只有真正收到 ack 才算有实例在跑。
+
+PySide6 只在用到 QLocalServer/Socket 时才导入——这样进程互斥（纯 ctypes）
+在没有 Qt 的环境（例如只跑单元测试的 CI）里也能用。
 """
 
 from __future__ import annotations
@@ -11,8 +14,7 @@ import ctypes
 import logging
 import os
 from ctypes import wintypes
-
-from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +22,13 @@ MESSAGE_SHOW = b"show\n"
 MESSAGE_ACK = b"ok\n"
 
 ERROR_ALREADY_EXISTS = 183
+
+
+def _qt_network():
+    """延迟导入，避免无 Qt 环境 import 本模块就失败。"""
+    from PySide6.QtNetwork import QLocalServer, QLocalSocket
+
+    return QLocalServer, QLocalSocket
 
 
 class ProcessMutex:
@@ -50,13 +59,18 @@ class ProcessMutex:
 class SingleInstance:
     def __init__(self, key: str = "VoxCall-Beta") -> None:
         self.key = key
-        self._server: QLocalServer | None = None
+        self._server: Any = None
 
     def already_running(self) -> bool:
         """已有实例在跑：通知它显示窗口并返回 True；否则返回 False。
 
         只认「发消息后收到 ack」这一种情况，避免残留管道导致误判。
         """
+        try:
+            _QLocalServer, QLocalSocket = _qt_network()
+        except Exception:
+            log.debug("没有 Qt 环境，跳过单实例检查")
+            return False
         socket = QLocalSocket()
         socket.connectToServer(self.key)
         if not socket.waitForConnected(300):
@@ -77,6 +91,7 @@ class SingleInstance:
         return True
 
     def listen(self, on_show) -> bool:
+        QLocalServer, _QLocalSocket = _qt_network()
         QLocalServer.removeServer(self.key)  # 清理上次异常退出留下的名字
         server = QLocalServer()
         server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)

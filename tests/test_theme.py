@@ -3,6 +3,13 @@ from unittest import mock
 
 from app import theme
 
+try:  # CI 只装 numpy/sounddevice/soxr，PySide6 用例要能自动跳过
+    import PySide6  # noqa: F401
+
+    HAS_QT = True
+except Exception:
+    HAS_QT = False
+
 
 class ResolveTests(unittest.TestCase):
     def test_explicit_prefs(self):
@@ -44,6 +51,7 @@ class StyleTests(unittest.TestCase):
         self.assertNotEqual(theme.TRACK["light"], theme.TRACK["dark"])
         self.assertNotEqual(theme.MUTED["light"], theme.MUTED["dark"])
 
+    @unittest.skipUnless(HAS_QT, "需要 PySide6（CI 只装轻量依赖）")
     def test_palette_has_expected_window_color(self):
         pal = theme.palette("dark")
         color = pal.color(pal.ColorRole.Window)
