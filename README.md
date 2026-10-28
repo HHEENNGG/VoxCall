@@ -2,7 +2,7 @@
   <img src="assets/icon-256.png" width="112" alt="VoxCall 图标">
 </p>
 
-<h1 align="center">VoxCall · Beta 0.02</h1>
+<h1 align="center">VoxCall · <!-- version -->Beta 0.02<!-- /version --></h1>
 
 <p align="center">
   <a href="https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml"><img src="https://github.com/HHEENNGG/VoxCall/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
@@ -160,5 +160,5 @@ build_exe.ps1        打包 PyInstaller onedir
 
 ---
 
-版本 **Beta 0.02** · 作者 **老鼠秋日私语**
+版本 **<!-- version -->Beta 0.02<!-- /version -->** · 作者 **老鼠秋日私语**
 由 AI 辅助编写

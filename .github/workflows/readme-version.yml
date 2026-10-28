@@ -1,0 +1,55 @@
+name: readme-version
+
+# 发布新 Release 时，自动把 README 里的版本号改成 tag 对应的版本。
+# 也可以手动触发：Actions → readme-version → Run workflow（tag 留空则用最新 release）。
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "版本 tag，例如 v0.03-beta（留空则取最新 release）"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: 解析 tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "解析到 tag：$TAG"
+
+      - name: 同步 README 版本号
+        run: |
+          set -euo pipefail
+          python3 tools/bump_readme_version.py "$TAG"
+
+      - name: 有变化才提交
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- README.md; then
+            echo "README 已是最新，无需提交"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "readme: 版本号同步为 ${TAG}"
+          git push
