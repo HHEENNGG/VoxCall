@@ -1,11 +1,14 @@
+import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
 from app import settings, simulate
 from app.devices import DeviceInfo, validate_pair
 from app.engine import AudioEngine, EngineError
+from app.model_adapter import ModelError
 
 SR = 48000
 
@@ -115,6 +118,63 @@ class EngineTests(unittest.TestCase):
         )
         self.assertEqual(result.metrics["state"], "error")
         self.assertIn("声纹", str(result.metrics["status"]))
+
+    def test_restart_after_model_failure_without_manual_stop(self):
+        """A failed download must not require an extra manual stop before retry."""
+        retried = threading.Event()
+        calls = []
+
+        def factory(*_):
+            calls.append(True)
+            if len(calls) == 1:
+                raise ModelError("download failed")
+            retried.set()
+            return None
+
+        engine = AudioEngine(settings.normalize({}), adapter_factory=factory)
+        mic = dev(1, "Microphone", "input")
+        cable = dev(2, "CABLE Input", "output")
+        try:
+            with mock.patch.object(engine, "_open_streams", return_value=48000):
+                with self.assertLogs("app.engine", level="ERROR"):
+                    engine.start(mic, cable)
+                    engine._worker.join(timeout=3)
+                self.assertFalse(engine.running)
+                self.assertEqual(engine.snapshot()["state"], "error")
+                engine.start(mic, cable)
+                self.assertTrue(engine.running)
+                self.assertTrue(retried.wait(timeout=3))
+                self.assertEqual(len(calls), 2)
+        finally:
+            engine.stop()
+
+    def test_restart_after_timed_out_stop_finishes(self):
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_factory(*_):
+            entered.set()
+            release.wait(timeout=5)
+            return None
+
+        engine = AudioEngine(settings.normalize({}), adapter_factory=slow_factory)
+        mic = dev(1, "Microphone", "input")
+        cable = dev(2, "CABLE Input", "output")
+        try:
+            with mock.patch.object(engine, "_open_streams", return_value=48000):
+                engine.start(mic, cable)
+                self.assertTrue(entered.wait(timeout=3))
+                engine.stop(timeout=0)
+                with self.assertRaises(EngineError):
+                    engine.start(mic, cable)
+                release.set()
+                engine._worker.join(timeout=3)
+                self.assertFalse(engine.running)
+                engine.start(mic, cable)
+                self.assertTrue(engine.running)
+        finally:
+            release.set()
+            engine.stop()
 
     def test_stop_is_idempotent(self):
         settings_cfg = settings.normalize({})

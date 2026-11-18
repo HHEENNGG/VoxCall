@@ -556,7 +556,9 @@ class AudioEngine:
         if self._worker is not None and self._worker.is_alive():
             raise EngineError("已经在运行，请先停止。")
         if self._worker is not None:
-            raise EngineError("上一次停止还在收尾（模型可能在结束任务），请稍等再启动。")
+            # A failed model task leaves a Thread object after the thread exits.
+            # Reap only a finished worker; never reuse state while it is alive.
+            self.stop(timeout=0)
 
         in_dev = self._as_device(input_device, "input")
         out_dev = self._as_device(output_device, "output")

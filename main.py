@@ -276,29 +276,43 @@ def run_gui(config: dict) -> int:
 
     mutex = ProcessMutex()
     guard = SingleInstance()
-    if mutex.already_exists:
-        # 旧实例可能还没开始监听管道（PyInstaller 启动有几秒），重试几次
-        for _ in range(10):
-            if guard.already_running():
-                break
-            time.sleep(0.3)
-        return 0
+    try:
+        if mutex.already_exists:
+            for _ in range(10):
+                if mutex.try_acquire():
+                    break
+                if guard.already_running():
+                    return 0
+                time.sleep(0.3)
+            else:
+                # The old owner can disappear during the last retry too.
+                if not mutex.try_acquire():
+                    message = (
+                        "VoxCall 的另一个进程仍在运行，但窗口没有响应。\n"
+                        "请先从托盘退出；如果已卡死，请在任务管理器中结束对应进程后重试。"
+                    )
+                    logging.getLogger(__name__).error(message)
+                    _show_error_dialog("VoxCall 启动失败", message)
+                    return 1
 
-    window = MainWindow(config)
-    guard.listen(window.show_window)
-    window.show()
+        window = MainWindow(config)
+        guard.listen(window.show_window)
+        window.show()
 
-    # 启动即最小化到托盘（设置里可开）
-    if bool(config.get("app", {}).get("start_minimized", False)) and window._tray is not None:
-        window.hide()
-        window._tray.showMessage(
-            "VoxCall 已在后台运行",
-            "右键托盘图标可以显示主窗口或退出。",
-            window._tray.Information,
-            3000,
-        )
+        # 启动即最小化到托盘（设置里可开）
+        if bool(config.get("app", {}).get("start_minimized", False)) and window._tray is not None:
+            window.hide()
+            window._tray.showMessage(
+                "VoxCall 已在后台运行",
+                "右键托盘图标可以显示主窗口或退出。",
+                window._tray.Information,
+                3000,
+            )
 
-    return int(app.exec())
+        return int(app.exec())
+    finally:
+        guard.close()
+        mutex.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
