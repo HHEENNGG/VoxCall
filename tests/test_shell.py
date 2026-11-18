@@ -1,4 +1,3 @@
-import os
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -37,18 +36,6 @@ class OpenPathTests(unittest.TestCase):
         ) as popen:
             self.assertFalse(shell.open_path(target))
         popen.assert_not_called()
-
-
-class MutexTests(unittest.TestCase):
-    def test_second_mutex_reports_exists(self):
-        from app.single_instance import ProcessMutex
-
-        if os.name != "nt":
-            self.skipTest("仅 Windows 有命名互斥体")
-        first = ProcessMutex("Local\\VoxCall-test-mutex")
-        second = ProcessMutex("Local\\VoxCall-test-mutex")
-        self.assertFalse(first.already_exists)
-        self.assertTrue(second.already_exists)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import os
+import time
 from ctypes import wintypes
 from typing import Any
 
@@ -22,6 +23,9 @@ MESSAGE_SHOW = b"show\n"
 MESSAGE_ACK = b"ok\n"
 
 ERROR_ALREADY_EXISTS = 183
+WAIT_OBJECT_0 = 0
+WAIT_ABANDONED = 0x80
+WAIT_TIMEOUT = 0x102
 
 
 def _qt_network():
@@ -41,19 +45,61 @@ class ProcessMutex:
     def __init__(self, name: str = "Local\\VoxCall-Beta") -> None:
         self.already_exists = False
         self._handle = None
+        self._kernel32 = None
+        self._owned = False
         if os.name != "nt":
             return
         try:
             kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
             kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, ctypes.c_wchar_p]
             kernel32.CreateMutexW.restype = wintypes.HANDLE
+            kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel32.WaitForSingleObject.restype = wintypes.DWORD
+            kernel32.ReleaseMutex.argtypes = [wintypes.HANDLE]
+            kernel32.ReleaseMutex.restype = wintypes.BOOL
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel32.CloseHandle.restype = wintypes.BOOL
             handle = kernel32.CreateMutexW(None, True, name)
             if not handle:
-                return
+                raise ctypes.WinError(ctypes.get_last_error())
+            existed = ctypes.get_last_error() == ERROR_ALREADY_EXISTS
             self._handle = handle
-            self.already_exists = ctypes.get_last_error() == ERROR_ALREADY_EXISTS
+            self._kernel32 = kernel32
+            self._owned = not existed
+            # An existing kernel object may have no live owner: another launch
+            # can keep its handle alive even after the original process dies.
+            self.already_exists = not self.try_acquire()
         except Exception:
-            log.debug("创建互斥体失败", exc_info=True)
+            log.warning("Could not create the process mutex", exc_info=True)
+            self.close()
+
+    def try_acquire(self) -> bool:
+        """Atomically claim a released or abandoned mutex, never a live owner's."""
+        if self._owned:
+            return True
+        if self._handle is None:
+            return not self.already_exists
+        result = self._kernel32.WaitForSingleObject(self._handle, 0)
+        if result in (WAIT_OBJECT_0, WAIT_ABANDONED):
+            self._owned = True
+            self.already_exists = False
+            return True
+        if result != WAIT_TIMEOUT:
+            log.warning("Could not wait for the process mutex: %s", result)
+        self.already_exists = True
+        return False
+
+    def close(self) -> None:
+        """Release ownership and the handle, including on GUI startup errors."""
+        if self._handle is not None:
+            if self._owned:
+                self._kernel32.ReleaseMutex(self._handle)
+            self._kernel32.CloseHandle(self._handle)
+            self._handle = None
+            self._owned = False
+
+    def __del__(self) -> None:
+        self.close()
 
 
 class SingleInstance:
@@ -72,23 +118,34 @@ class SingleInstance:
             log.debug("没有 Qt 环境，跳过单实例检查")
             return False
         socket = QLocalSocket()
-        socket.connectToServer(self.key)
-        if not socket.waitForConnected(300):
-            return False
         try:
+            socket.connectToServer(self.key)
+            if not socket.waitForConnected(300):
+                return False
             socket.write(MESSAGE_SHOW)
             socket.flush()
             socket.waitForBytesWritten(300)
-            # 真正的实例会回 ack；残留管道/僵尸服务不会
-            if not socket.waitForReadyRead(600):
-                log.info("单实例管道无应答，按未运行处理（清理残留）")
-                socket.disconnectFromServer()
-                return False
-            socket.disconnectFromServer()
-        except Exception:
-            log.debug("通知已有实例失败", exc_info=True)
+            deadline = time.monotonic() + 0.6
+            reply = bytearray()
+            while time.monotonic() < deadline:
+                if not socket.bytesAvailable():
+                    remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                    if not socket.waitForReadyRead(remaining_ms):
+                        return False
+                reply.extend(bytes(socket.readAll()))
+                if b"\n" in reply or len(reply) > 64:
+                    return bytes(reply) == MESSAGE_ACK
             return False
-        return True
+        except Exception:
+            log.debug("Could not notify the existing instance", exc_info=True)
+            return False
+        finally:
+            socket.abort()
+
+    def close(self) -> None:
+        if self._server is not None:
+            self._server.close()
+            self._server = None
 
     def listen(self, on_show) -> bool:
         QLocalServer, _QLocalSocket = _qt_network()
